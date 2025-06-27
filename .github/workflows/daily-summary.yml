@@ -1,0 +1,47 @@
+name: Daily llama.cpp Summary
+
+on:
+  schedule:
+    # Run daily at 08:00 UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  fetch-and-summarize:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # Required to push changes
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq curl
+        
+    - name: Fetch and summarize llama.cpp updates
+      env:
+        OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+      run: |
+        ./scripts/fetch-and-summarize.sh
+        
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Add the summary file
+        git add docs/summary.md
+        
+        # Check if there are changes to commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update daily llama.cpp summary - $(date -u '+%Y-%m-%d')"
+          git push
+        fi
