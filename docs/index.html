@@ -191,6 +191,24 @@
 
         let activeButton = null;
 
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderBodyHtml(text) {
+            const escaped = escapeHtml(text || '');
+            const prBase = 'https://github.com/ggml-org/llama.cpp/pull/';
+            const linked = escaped.replace(/(^|\s)#(\d+)\b/g, (_, prefix, num) => {
+                return `${prefix}<a href="${prBase}${num}" target="_blank" rel="noopener noreferrer">#${num}</a>`;
+            });
+            return linked.replace(/\n/g, '<br>');
+        }
+
         async function loadMonth(year, month) {
             setStatus('Loading...');
             resultsEl.innerHTML = '';
@@ -282,7 +300,7 @@
 
                     if (item.body) {
                         const body = document.createElement('p');
-                        body.textContent = item.body;
+                        body.innerHTML = renderBodyHtml(item.body);
                         release.appendChild(body);
                     }
 
