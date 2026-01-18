@@ -24,20 +24,35 @@
         }
 
         header {
-            padding: 32px 24px 16px;
+            padding: 18px 24px;
             border-bottom: 1px solid var(--border);
-            background: linear-gradient(180deg, #0b0f19 0%, #0b0f19 60%, #0a1020 100%);
+            background: linear-gradient(180deg, #0b0f19 0%, #0b0f19 70%, #0a1020 100%);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(8px);
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
         }
 
         header h1 {
-            margin: 0 0 8px;
-            font-size: 28px;
+            margin: 0;
+            font-size: 22px;
             font-weight: 700;
+            letter-spacing: 0.01em;
         }
 
         header p {
             margin: 0;
             color: var(--muted);
+            font-size: 13px;
         }
 
         main {
@@ -48,27 +63,39 @@
 
         .layout {
             display: grid;
-            grid-template-columns: 260px 1fr;
+            grid-template-columns: minmax(220px, 260px) 1fr;
             gap: 20px;
+            align-items: start;
         }
 
         aside {
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 14px;
             background: var(--panel);
             padding: 16px;
             height: fit-content;
             position: sticky;
-            top: 16px;
+            top: 72px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
         .sidebar-title {
-            margin: 0 0 12px;
-            font-size: 16px;
+            margin: 0;
+            font-size: 12px;
             color: var(--muted);
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.08em;
         }
+
+        .sidebar-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
 
         .year-group {
             margin-bottom: 16px;
@@ -76,45 +103,64 @@
 
         .year-group h3 {
             margin: 0 0 8px;
-            font-size: 16px;
+            font-size: 13px;
+            color: var(--text);
+            letter-spacing: 0.04em;
         }
 
         .month-list {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 6px;
         }
 
-        .month-btn {
-            padding: 6px 8px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
+        .month-chip {
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid transparent;
             background: #0b1222;
             color: var(--text);
             cursor: pointer;
             font-size: 12px;
             text-align: center;
+            transition: all 0.2s ease;
         }
 
-        .month-btn:hover {
+        .month-chip:hover {
             border-color: var(--accent);
+            color: var(--accent);
         }
 
-        .month-btn.active {
+        .month-chip.active {
             border-color: var(--accent);
-            background: #1b2a4d;
+            background: #18233b;
+            color: #eaf7ff;
             font-weight: 700;
         }
 
         .status {
             color: var(--muted);
-            font-size: 14px;
-            margin-bottom: 16px;
+            font-size: 12px;
+        }
+
+        .month-scroller {
+            max-height: 420px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .month-scroller::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .month-scroller::-webkit-scrollbar-thumb {
+            background: #1f2a44;
+            border-radius: 999px;
         }
 
         .day-card {
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 14px;
             padding: 16px;
             background: var(--panel);
             margin-bottom: 16px;
@@ -122,7 +168,7 @@
 
         .day-card h2 {
             margin: 0 0 8px;
-            font-size: 20px;
+            font-size: 18px;
         }
 
         .release {
@@ -133,7 +179,7 @@
 
         .release h3 {
             margin: 0 0 6px;
-            font-size: 16px;
+            font-size: 15px;
             color: var(--accent);
         }
 
@@ -146,6 +192,29 @@
             white-space: pre-wrap;
             margin: 8px 0 0;
             color: var(--text);
+            line-height: 1.55;
+        }
+
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            gap: 12px;
+        }
+
+        .results-header h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .month-pill {
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 12px;
         }
 
         .empty {
@@ -164,18 +233,30 @@
 
 <body>
     <header>
-        <h1>llama.cpp Daily Summary</h1>
-        <p>Browse daily release summaries by month from JSON files hosted on GitHub Pages.</p>
+        <div class="header-inner">
+            <div>
+                <h1>llama.cpp Daily Summary</h1>
+                <p>Browse daily release summaries by month from JSON files hosted on GitHub Pages.</p>
+            </div>
+            <div class="month-pill" id="current-month">Latest month</div>
+        </div>
     </header>
 
     <main>
         <div class="layout">
             <aside>
-                <div class="sidebar-title">Months</div>
-                <div class="status" id="status">Loading months...</div>
-                <nav id="sidebar"></nav>
+                <div class="sidebar-meta">
+                    <div class="sidebar-title">Months</div>
+                    <div class="status" id="status">Loading months...</div>
+                </div>
+                <nav id="sidebar" class="month-scroller"></nav>
             </aside>
-            <section id="results"></section>
+            <section id="results">
+                <div class="results-header">
+                    <h2>Daily summaries</h2>
+                    <div class="month-pill" id="results-month">--</div>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -188,6 +269,8 @@
         const statusEl = document.getElementById('status');
         const resultsEl = document.getElementById('results');
         const sidebarEl = document.getElementById('sidebar');
+        const currentMonthEl = document.getElementById('current-month');
+        const resultsMonthEl = document.getElementById('results-month');
 
         let activeButton = null;
 
@@ -211,7 +294,8 @@
 
         async function loadMonth(year, month) {
             setStatus('Loading...');
-            resultsEl.innerHTML = '';
+            updateMonthLabels(year, month);
+            clearResults();
 
             let files;
             try {
@@ -222,7 +306,7 @@
             }
 
             if (!files.length) {
-                resultsEl.innerHTML = '<div class="empty">No data for this month.</div>';
+                resultsEl.appendChild(buildEmptyCard('No data for this month.'));
                 setStatus('Done');
                 return;
             }
@@ -241,6 +325,25 @@
 
         function setStatus(text) {
             statusEl.textContent = text;
+        }
+
+        function updateMonthLabels(year, month) {
+            const label = `${year}-${month}`;
+            if (currentMonthEl) currentMonthEl.textContent = label;
+            if (resultsMonthEl) resultsMonthEl.textContent = label;
+        }
+
+        function clearResults() {
+            const header = resultsEl.querySelector('.results-header');
+            resultsEl.innerHTML = '';
+            if (header) resultsEl.appendChild(header);
+        }
+
+        function buildEmptyCard(message) {
+            const empty = document.createElement('div');
+            empty.className = 'empty';
+            empty.textContent = message;
+            return empty;
         }
 
         async function listJsonFiles(year, month) {
@@ -397,7 +500,7 @@
                     months.forEach(month => {
                         const btn = document.createElement('button');
                         btn.type = 'button';
-                        btn.className = 'month-btn';
+                        btn.className = 'month-chip';
                         btn.textContent = month;
                         btn.addEventListener('click', () => {
                             setActiveButton(btn);
