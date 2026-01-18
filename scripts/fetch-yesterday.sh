@@ -106,6 +106,11 @@ while true; do
   fi
 
   RELEASES_JSON=$(jq -s '.[0] + .[1]' <(echo "$RELEASES_JSON") <(echo "$PAGE_JSON"))
+  OLDEST_PUBLISHED=$(echo "$PAGE_JSON" | jq -r '[.[] | select(.published_at != null) | .published_at] | last // empty')
+  if [ -n "$OLDEST_PUBLISHED" ] && [[ "$OLDEST_PUBLISHED" < "$START_ISO" ]]; then
+    echo "Oldest release on page ${PAGE} is ${OLDEST_PUBLISHED}; older than start ${START_ISO}. Stopping pagination." >&2
+    break
+  fi
   PAGE=$((PAGE + 1))
 done
 
