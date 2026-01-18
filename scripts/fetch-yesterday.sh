@@ -21,15 +21,16 @@ fi
 
 # Check if date was obtained successfully
 if [ -z "$YESTERDAY_START_ISO" ]; then
-  echo "Error: Could not determine yesterday's date. Please ensure your 'date' command supports -v or -d option."
+  echo "Error: Could not determine yesterday's date. Please ensure your 'date' command supports -v or -d option." >&2
   exit 1
 fi
 
-echo "Fetching releases and commits for ${OWNER}/${REPO} since ${YESTERDAY_START_ISO}..."
-echo "----------------------------------------"
+# Log to stderr so stdout can be used for JSON output
+echo "Fetching releases for ${OWNER}/${REPO} since ${YESTERDAY_START_ISO}..." >&2
+echo "----------------------------------------" >&2
 
 # Fetch Releases and filter
-echo "Fetching releases..."
+echo "Fetching releases..." >&2
 RELEASES_JSON=$(curl -s -L \
   -H "Accept: ${ACCEPT_HEADER}" \
   -H "X-GitHub-Api-Version: ${API_VERSION}" \
@@ -37,70 +38,37 @@ RELEASES_JSON=$(curl -s -L \
 
 # Check if curl was successful
 if [ $? -ne 0 ]; then
-    echo "Error: Failed to fetch releases from GitHub API."
+    echo "Error: Failed to fetch releases from GitHub API." >&2
     # Optionally print $RELEASES_JSON for error details
     exit 1
 fi
 
-# Use jq to filter yesterday's Releases (based on published_at)
-YESTERDAY_RELEASES=$(echo "$RELEASES_JSON" | jq -r --arg date "$YESTERDAY_START_ISO" '
-  .[] |
-  # Select releases published on or after the specified start date
+# Use jq to filter releases on or after the start date and produce a JSON array containing tag, published_at, and body.
+# In the body we:
+#  - replace markdown links [text](url) with text
+#  - remove any remaining URLs
+YESTERDAY_RELEASES_JSON=$(echo "$RELEASES_JSON" | jq --arg date "$YESTERDAY_START_ISO" '[ .[] |
   select(.published_at != null and .published_at >= $date) |
-  "Release Tag: " + .tag_name + "\nName: " + .name + "\nPublished: " + .published_at + "\nBody:\n" + .body + "\n---"
-')
+  {
+    tag: .tag_name,
+    published_at: .published_at,
+    body: (
+      (.body // "") |
+      # remove markdown link URL portion: "...](http...)" -> "]" so the link text remains in brackets
+      gsub("\\]\\(https?://[^)]*\\)"; "]") |
+      # remove remaining square brackets from markdown links
+      gsub("\\[|\\]"; "") |
+      # remove any leftover plain URLs
+      gsub("https?://[^\\s]+"; "") |
+      gsub("\\n{2,}"; "\\n\\n") |
+      gsub("(^[[:space:]]+|[[:space:]]+$)"; "")
+    )
+  }
+]')
 
-# Fetch yesterday's Commits
-echo "Fetching commits..."
-# Use since parameter to filter commits
-COMMITS_JSON=$(curl -s -L \
-  -H "Accept: ${ACCEPT_HEADER}" \
-  -H "X-GitHub-Api-Version: ${API_VERSION}" \
-  "${COMMITS_URL}?since=${YESTERDAY_START_ISO}")
-
-# Check if curl was successful
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to fetch commits from GitHub API."
-    # Optionally print $COMMITS_JSON for error details
-    exit 1
-fi
-
-# Use jq to process commits
-# Filter out merge commits (messages usually start with "Merge pull request" or "Merge branch")
-# Extract SHA and the full commit message
-YESTERDAY_COMMITS=$(echo "$COMMITS_JSON" | jq -r --arg date "$YESTERDAY_START_ISO" '
-  .[] |
-  # Ensure commit date is actually on or after the specified start time
-  select(.commit.author.date >= $date) |
-  # Filter out common merge commit messages
-  select(.commit.message | startswith("Merge pull request") | not) |
-  select(.commit.message | startswith("Merge branch") | not) |
-  "Commit: " + .sha + "\nMessage:\n" + .commit.message + "\n---" # Get the full message
-')
-
-
-# Output combined results
-echo "Yesterday's Activity (Releases and Commits):"
-echo "----------------------------------------"
-
-if [ -z "$YESTERDAY_RELEASES" ] && [ -z "$YESTERDAY_COMMITS" ]; then
-  echo "No new releases or non-merge commits found since ${YESTERDAY_START_ISO}."
-else
-  if [ -n "$YESTERDAY_RELEASES" ]; then
-    echo "Releases:"
-    echo -e "$YESTERDAY_RELEASES" # Use -e to interpret \n
-  else
-    echo "No new releases found since ${YESTERDAY_START_ISO}."
-  fi
-  echo # Add a newline for separation if both exist
-
-  if [ -n "$YESTERDAY_COMMITS" ]; then
-    echo "Commits (excluding merges):"
-    echo -e "$YESTERDAY_COMMITS" # Use -e to interpret \n
-  else
-    echo "No new non-merge commits found since ${YESTERDAY_START_ISO}."
-  fi
-fi
-echo "----------------------------------------"
+# Output compact JSON object (single line) with execution timestamp and data array on stdout.
+EXECUTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+# Use jq -n -c to emit compact JSON without extra pretty formatting
+jq -n -c --arg executed_at "$EXECUTED_AT" --argjson data "$YESTERDAY_RELEASES_JSON" '{executed_at: $executed_at, data: $data}'
 
 exit 0
