@@ -12,29 +12,42 @@ RELEASES_URL="https://api.github.com/repos/${OWNER}/${REPO}/releases"
 
 # Optional target date (UTC) in YYYY-MM-DD. Can be set via env or first arg.
 TARGET_DATE="${TARGET_DATE:-$1}"
+TIMEZONE="${TIMEZONE:-UTC}"
 
 if [ -n "$TARGET_DATE" ]; then
-  # Parse target date and compute [start, end) in UTC
-  START_ISO=$(date -u -d "${TARGET_DATE}T00:00:00Z" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
-  if [ -z "$START_ISO" ]; then
-    START_ISO=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "${TARGET_DATE}T00:00:00Z" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
-  fi
+  # Parse target date in TIMEZONE and compute [start, end) in UTC
+  START_EPOCH=$(TZ="$TIMEZONE" date -d "${TARGET_DATE} 00:00:00" +%s 2>/dev/null)
+  END_EPOCH=$(TZ="$TIMEZONE" date -d "${TARGET_DATE} 00:00:00 +1 day" +%s 2>/dev/null)
+  if [ -n "$START_EPOCH" ] && [ -n "$END_EPOCH" ]; then
+    START_ISO=$(date -u -d "@${START_EPOCH}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+    END_ISO=$(date -u -d "@${END_EPOCH}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+  else
+    START_ISO=$(date -u -d "${TARGET_DATE}T00:00:00Z" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    if [ -z "$START_ISO" ]; then
+      START_ISO=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "${TARGET_DATE}T00:00:00Z" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    fi
 
-  END_ISO=$(date -u -d "${TARGET_DATE} +1 day" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
-  if [ -z "$END_ISO" ]; then
-    END_ISO=$(date -u -j -f "%Y-%m-%d" "$TARGET_DATE" -v+1d '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    END_ISO=$(date -u -d "${TARGET_DATE} +1 day" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    if [ -z "$END_ISO" ]; then
+      END_ISO=$(date -u -j -f "%Y-%m-%d" "$TARGET_DATE" -v+1d '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    fi
   fi
 else
-  # Get yesterday's start time (UTC)
-  # Try macOS/BSD date command
-  START_ISO=$(date -u -v-1d '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
-
-  # If macOS/BSD command failed, try GNU date command
-  if [ -z "$START_ISO" ]; then
-    START_ISO=$(date -u -d "yesterday" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+  # Get yesterday's start time in TIMEZONE and convert to UTC
+  YESTERDAY_DATE=$(TZ="$TIMEZONE" date -d "yesterday" +%Y-%m-%d 2>/dev/null)
+  if [ -n "$YESTERDAY_DATE" ]; then
+    START_EPOCH=$(TZ="$TIMEZONE" date -d "${YESTERDAY_DATE} 00:00:00" +%s 2>/dev/null)
+    END_EPOCH=$(TZ="$TIMEZONE" date -d "${YESTERDAY_DATE} 00:00:00 +1 day" +%s 2>/dev/null)
+    START_ISO=$(date -u -d "@${START_EPOCH}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+    END_ISO=$(date -u -d "@${END_EPOCH}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+  else
+    # Fallback to UTC-based calculation
+    START_ISO=$(date -u -v-1d '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    if [ -z "$START_ISO" ]; then
+      START_ISO=$(date -u -d "yesterday" '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
+    fi
+    END_ISO=$(date -u '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
   fi
-
-  END_ISO=$(date -u '+%Y-%m-%dT00:00:00Z' 2>/dev/null)
 fi
 
 # Check if date was obtained successfully
@@ -44,7 +57,7 @@ if [ -z "$START_ISO" ] || [ -z "$END_ISO" ]; then
 fi
 
 # Log to stderr so stdout can be used for JSON output
-echo "Fetching releases for ${OWNER}/${REPO} from ${START_ISO} to ${END_ISO}..." >&2
+echo "Fetching releases for ${OWNER}/${REPO} from ${START_ISO} to ${END_ISO} (timezone=${TIMEZONE})..." >&2
 echo "----------------------------------------" >&2
 
 # Fetch Releases (paginate to ensure completeness)

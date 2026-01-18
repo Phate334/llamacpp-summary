@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>llama.cpp Daily Summary</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #0b0f19;
+            --panel: #121827;
+            --text: #e8ecf3;
+            --muted: #98a2b3;
+            --accent: #7dd3fc;
+            --border: #1f2a44;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        header {
+            padding: 32px 24px 16px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, #0b0f19 0%, #0b0f19 60%, #0a1020 100%);
+        }
+
+        header h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        header p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 20px;
+        }
+
+        aside {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel);
+            padding: 16px;
+            height: fit-content;
+            position: sticky;
+            top: 16px;
+        }
+
+        .sidebar-title {
+            margin: 0 0 12px;
+            font-size: 16px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .year-group {
+            margin-bottom: 16px;
+        }
+
+        .year-group h3 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        .month-list {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .month-btn {
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #0b1222;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .month-btn:hover {
+            border-color: var(--accent);
+        }
+
+        .month-btn.active {
+            border-color: var(--accent);
+            background: #1b2a4d;
+            font-weight: 700;
+        }
+
+        .status {
+            color: var(--muted);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .day-card {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            background: var(--panel);
+            margin-bottom: 16px;
+        }
+
+        .day-card h2 {
+            margin: 0 0 8px;
+            font-size: 20px;
+        }
+
+        .release {
+            border-top: 1px dashed var(--border);
+            padding-top: 12px;
+            margin-top: 12px;
+        }
+
+        .release h3 {
+            margin: 0 0 6px;
+            font-size: 16px;
+            color: var(--accent);
+        }
+
+        .release time {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .release p {
+            white-space: pre-wrap;
+            margin: 8px 0 0;
+            color: var(--text);
+        }
+
+        .empty {
+            padding: 32px;
+            text-align: center;
+            color: var(--muted);
+            border: 1px dashed var(--border);
+            border-radius: 12px;
+        }
+
+        a {
+            color: var(--accent);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>llama.cpp Daily Summary</h1>
+        <p>Browse daily release summaries by month from JSON files hosted on GitHub Pages.</p>
+    </header>
+
+    <main>
+        <div class="layout">
+            <aside>
+                <div class="sidebar-title">Months</div>
+                <div class="status" id="status">Loading months...</div>
+                <nav id="sidebar"></nav>
+            </aside>
+            <section id="results"></section>
+        </div>
+    </main>
+
+    <script>
+        const owner = 'Phate334';
+        const repo = 'llamacpp-summary';
+        const branch = 'main';
+        const docsPath = 'docs';
+
+        const statusEl = document.getElementById('status');
+        const resultsEl = document.getElementById('results');
+        const sidebarEl = document.getElementById('sidebar');
+
+        let activeButton = null;
+
+        async function loadMonth(year, month) {
+            setStatus('Loading...');
+            resultsEl.innerHTML = '';
+
+            let files;
+            try {
+                files = await listJsonFiles(year, month);
+            } catch (err) {
+                setStatus(`Load failed: ${err.message}`);
+                return;
+            }
+
+            if (!files.length) {
+                resultsEl.innerHTML = '<div class="empty">No data for this month.</div>';
+                setStatus('Done');
+                return;
+            }
+
+            for (const file of files) {
+                try {
+                    const data = await fetchJsonFile(year, month, file.name);
+                    renderDayCard(file.name, data);
+                } catch (err) {
+                    renderErrorCard(file.name, err);
+                }
+            }
+
+            setStatus(`Done: ${files.length} days`);
+        }
+
+        function setStatus(text) {
+            statusEl.textContent = text;
+        }
+
+        async function listJsonFiles(year, month) {
+            const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${docsPath}/${year}/${month}?ref=${branch}`;
+            const res = await fetch(apiUrl, { headers: { 'Accept': 'application/vnd.github+json' } });
+            if (res.status === 404) return [];
+            if (!res.ok) throw new Error(`GitHub API error (${res.status})`);
+            const data = await res.json();
+            if (!Array.isArray(data)) return [];
+            return data
+                .filter(item => item.type === 'file' && item.name.endsWith('.json'))
+                .sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        async function fetchJsonFile(year, month, filename) {
+            const baseUrl = new URL('.', window.location.href).href;
+            const url = `${baseUrl}${year}/${month}/${filename}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+            return res.json();
+        }
+
+        function renderDayCard(filename, payload) {
+            const dateLabel = filename.replace('.json', '');
+            const executedAt = payload?.executed_at || 'Unknown';
+            const data = Array.isArray(payload?.data) ? payload.data : [];
+
+            const card = document.createElement('article');
+            card.className = 'day-card';
+
+            const header = document.createElement('h2');
+            header.textContent = dateLabel;
+            card.appendChild(header);
+
+            const meta = document.createElement('p');
+            meta.style.color = 'var(--muted)';
+            meta.style.margin = '0 0 8px';
+            meta.textContent = `Executed at: ${executedAt}`;
+            card.appendChild(meta);
+
+            if (!data.length) {
+                const empty = document.createElement('p');
+                empty.textContent = 'No releases for this day.';
+                card.appendChild(empty);
+            } else {
+                data.forEach(item => {
+                    const release = document.createElement('div');
+                    release.className = 'release';
+
+                    const title = document.createElement('h3');
+                    title.textContent = item.tag || 'Untitled release';
+                    release.appendChild(title);
+
+                    const time = document.createElement('time');
+                    time.textContent = item.published_at || 'Unknown time';
+                    release.appendChild(time);
+
+                    if (item.body) {
+                        const body = document.createElement('p');
+                        body.textContent = item.body;
+                        release.appendChild(body);
+                    }
+
+                    card.appendChild(release);
+                });
+            }
+
+            resultsEl.appendChild(card);
+        }
+
+        function renderErrorCard(filename, err) {
+            const card = document.createElement('article');
+            card.className = 'day-card';
+            const header = document.createElement('h2');
+            header.textContent = filename.replace('.json', '');
+            card.appendChild(header);
+            const msg = document.createElement('p');
+            msg.textContent = `Load failed: ${err.message}`;
+            card.appendChild(msg);
+            resultsEl.appendChild(card);
+        }
+
+        async function listYears() {
+            const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${docsPath}?ref=${branch}`;
+            const res = await fetch(apiUrl, { headers: { 'Accept': 'application/vnd.github+json' } });
+            if (!res.ok) throw new Error(`GitHub API error (${res.status})`);
+            const data = await res.json();
+            if (!Array.isArray(data)) return [];
+            return data
+                .filter(item => item.type === 'dir' && /^\d{4}$/.test(item.name))
+                .map(item => item.name)
+                .sort();
+        }
+
+        async function listMonths(year) {
+            const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${docsPath}/${year}?ref=${branch}`;
+            const res = await fetch(apiUrl, { headers: { 'Accept': 'application/vnd.github+json' } });
+            if (res.status === 404) return [];
+            if (!res.ok) throw new Error(`GitHub API error (${res.status})`);
+            const data = await res.json();
+            if (!Array.isArray(data)) return [];
+            return data
+                .filter(item => item.type === 'dir' && /^\d{2}$/.test(item.name))
+                .map(item => item.name)
+                .sort();
+        }
+
+        function setActiveButton(button) {
+            if (activeButton) activeButton.classList.remove('active');
+            activeButton = button;
+            if (activeButton) activeButton.classList.add('active');
+        }
+
+        async function buildSidebar() {
+            setStatus('Loading months...');
+            sidebarEl.innerHTML = '';
+
+            let years = [];
+            try {
+                years = await listYears();
+            } catch (err) {
+                setStatus(`Load failed: ${err.message}`);
+                return null;
+            }
+
+            if (!years.length) {
+                setStatus('No data');
+                sidebarEl.innerHTML = '<div class="empty">No year directories found.</div>';
+                return null;
+            }
+
+            const monthIndex = {};
+            for (const year of years) {
+                const months = await listMonths(year);
+                monthIndex[year] = months;
+
+                const group = document.createElement('div');
+                group.className = 'year-group';
+
+                const title = document.createElement('h3');
+                title.textContent = year;
+                group.appendChild(title);
+
+                const list = document.createElement('div');
+                list.className = 'month-list';
+
+                if (!months.length) {
+                    const empty = document.createElement('p');
+                    empty.textContent = 'No months available.';
+                    empty.style.color = 'var(--muted)';
+                    empty.style.margin = '0 0 8px';
+                    group.appendChild(empty);
+                } else {
+                    months.forEach(month => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'month-btn';
+                        btn.textContent = month;
+                        btn.addEventListener('click', () => {
+                            setActiveButton(btn);
+                            loadMonth(year, month);
+                        });
+                        list.appendChild(btn);
+                    });
+                    group.appendChild(list);
+                }
+
+                sidebarEl.appendChild(group);
+            }
+
+            const latestYear = years[years.length - 1];
+            const latestMonths = monthIndex[latestYear] || [];
+            if (!latestMonths.length) {
+                setStatus('No months available');
+                return null;
+            }
+
+            const latestMonth = latestMonths[latestMonths.length - 1];
+            const latestButton = Array.from(sidebarEl.querySelectorAll('.year-group'))
+                .find(group => group.querySelector('h3')?.textContent === latestYear)
+                ?.querySelectorAll('.month-btn')?.[latestMonths.length - 1];
+
+            if (latestButton) setActiveButton(latestButton);
+            return { year: latestYear, month: latestMonth };
+        }
+
+        (async () => {
+            const latest = await buildSidebar();
+            if (latest) {
+                await loadMonth(latest.year, latest.month);
+            }
+        })();
+    </script>
+</body>
+
+</html>
