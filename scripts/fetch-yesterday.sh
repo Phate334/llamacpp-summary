@@ -57,17 +57,37 @@ fi
 RELEASES_JSON="[]"
 PAGE=1
 while true; do
-  PAGE_JSON=$(curl -s -L \
+  RESPONSE=$(curl -sS -L \
+    --connect-timeout 10 \
+    --max-time 60 \
     -H "Accept: ${ACCEPT_HEADER}" \
     -H "X-GitHub-Api-Version: ${API_VERSION}" \
     "${AUTH_HEADER[@]}" \
+    -w "\n%{http_code}" \
     "${RELEASES_URL}?per_page=100&page=${PAGE}")
 
-  if [ $? -ne 0 ]; then
-      echo "Error: Failed to fetch releases from GitHub API." >&2
-      exit 1
+  HTTP_STATUS="${RESPONSE##*$'\n'}"
+  HTTP_BODY="${RESPONSE%$'\n'*}"
+
+  if [ -z "$HTTP_STATUS" ] || [ "$HTTP_STATUS" -ge 400 ]; then
+    MESSAGE=$(echo "$HTTP_BODY" | jq -r '.message? // empty' 2>/dev/null)
+    if echo "$MESSAGE" | grep -qi "rate limit exceeded"; then
+      echo "Error: GitHub API rate limit exceeded. Try again later or use a token with higher limits." >&2
+    elif echo "$MESSAGE" | grep -qi "abuse detection"; then
+      echo "Error: GitHub API abuse detection triggered. Slow down requests and try again later." >&2
+    else
+      echo "Error: GitHub API returned status ${HTTP_STATUS}. ${MESSAGE}" >&2
+    fi
+    exit 1
   fi
 
+  if ! echo "$HTTP_BODY" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    echo "Error: Unexpected GitHub API response (not an array)." >&2
+    echo "$HTTP_BODY" | jq -c '.' >&2 || true
+    exit 1
+  fi
+
+  PAGE_JSON="$HTTP_BODY"
   PAGE_COUNT=$(echo "$PAGE_JSON" | jq 'length')
   if [ "$PAGE_COUNT" -eq 0 ]; then
     break
