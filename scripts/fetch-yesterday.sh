@@ -57,14 +57,25 @@ fi
 RELEASES_JSON="[]"
 PAGE=1
 while true; do
-  RESPONSE=$(curl -sS -L \
+  echo "Fetching releases page ${PAGE}..." >&2
+  RESPONSE=$(timeout 60s curl -sS -L \
     --connect-timeout 10 \
-    --max-time 60 \
+    --max-time 50 \
     -H "Accept: ${ACCEPT_HEADER}" \
     -H "X-GitHub-Api-Version: ${API_VERSION}" \
     "${AUTH_HEADER[@]}" \
     -w "\n%{http_code}" \
     "${RELEASES_URL}?per_page=100&page=${PAGE}")
+
+  CURL_EXIT=$?
+  if [ $CURL_EXIT -ne 0 ]; then
+    if [ $CURL_EXIT -eq 124 ]; then
+      echo "Error: GitHub API request timed out on page ${PAGE}." >&2
+    else
+      echo "Error: GitHub API request failed (exit ${CURL_EXIT}) on page ${PAGE}." >&2
+    fi
+    exit 1
+  fi
 
   HTTP_STATUS="${RESPONSE##*$'\n'}"
   HTTP_BODY="${RESPONSE%$'\n'*}"
@@ -89,6 +100,7 @@ while true; do
 
   PAGE_JSON="$HTTP_BODY"
   PAGE_COUNT=$(echo "$PAGE_JSON" | jq 'length')
+  echo "Page ${PAGE} returned ${PAGE_COUNT} releases (HTTP ${HTTP_STATUS})." >&2
   if [ "$PAGE_COUNT" -eq 0 ]; then
     break
   fi
