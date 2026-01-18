@@ -128,27 +128,22 @@ while true; do
 done
 
 # Use jq to filter releases on or after the start date and produce a JSON array containing tag, published_at, and body.
-# In the body we:
-#  - replace markdown links [text](url) with text
-#  - remove any remaining URLs
-YESTERDAY_RELEASES_JSON=$(echo "$RELEASES_JSON" | jq --arg start "$START_ISO" --arg end "$END_ISO" '[ .[] |
-  select(.published_at != null and .published_at >= $start and .published_at < $end) |
-  {
-    tag: .tag_name,
-    published_at: .published_at,
-    body: (
-      (.body // "") |
-      # remove markdown link URL portion: "...](http...)" -> "]" so the link text remains in brackets
-      gsub("\\]\\(https?://[^)]*\\)"; "]") |
-      # remove remaining square brackets from markdown links
-      gsub("\\[|\\]"; "") |
-      # remove any leftover plain URLs
-      gsub("https?://[^\\s]+"; "") |
-      gsub("\\n{2,}"; "\\n\\n") |
-      gsub("(^[[:space:]]+|[[:space:]]+$)"; "")
-    )
-  }
-]')
+# In the body we keep only the content inside <details open>...</details>.
+YESTERDAY_RELEASES_JSON=$(echo "$RELEASES_JSON" | jq --arg start "$START_ISO" --arg end "$END_ISO" '
+  def extract_details:
+    (try capture("(?s)<details[^>]*open[^>]*>\\s*(?<content>.*?)\\s*</details>").content catch "")
+    | gsub("\\r"; "")
+    | gsub("\\n{3,}"; "\\n\\n")
+    | gsub("(^[[:space:]]+|[[:space:]]+$)"; "");
+
+  [ .[] |
+    select(.published_at != null and .published_at >= $start and .published_at < $end) |
+    {
+      tag: .tag_name,
+      published_at: .published_at,
+      body: ((.body // "") | extract_details)
+    }
+  ]')
 
 # Output compact JSON object (single line) with execution timestamp and data array on stdout.
 EXECUTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')

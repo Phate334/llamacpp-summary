@@ -25,6 +25,7 @@ jobs:
           MONTH=$(date -u -d "$DATE" +%m)
           echo "DATE=$DATE" >> "$GITHUB_ENV"
           mkdir -p "docs/$YEAR/$MONTH"
+          rm -f "docs/$YEAR/$MONTH/$DATE.json"
           bash scripts/fetch-yesterday.sh "$DATE" > "docs/$YEAR/$MONTH/$DATE.json"
 
       - name: Commit and push if changed
