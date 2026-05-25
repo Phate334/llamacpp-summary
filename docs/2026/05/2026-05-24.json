@@ -1,0 +1,1 @@
+{"executed_at":"2026-05-25T01:55:01Z","data":[{"tag":"b9305","published_at":"2026-05-24T11:31:20Z","body":"cmake : fix ui build (#23592)\n\n* cmake/ui : add -fPIC to llama-ui static lib\n\n* cmake : rename host compiled embed helper"}]}
